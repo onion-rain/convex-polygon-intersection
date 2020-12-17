@@ -1,30 +1,57 @@
-from edge import Edge
 import numpy as np
 import matplotlib.pyplot as plt
+import math
+
+
+class Edge:
+    def __init__(self, point_a, point_b):
+        self._support_vector = np.array(point_a)
+        self._direction_vector = np.subtract(point_b, point_a)
+
+    def get_intersection_point(self, other):
+        t = self._get_intersection_parameter(other)
+        return None if t is None else self._get_point(t)
+
+    def _get_point(self, parameter):
+        return self._support_vector + parameter * self._direction_vector
+
+    def _get_intersection_parameter(self, other):
+        A = np.array([-self._direction_vector, other._direction_vector]).T
+        if np.linalg.matrix_rank(A) < 2:
+        	return None
+        b = np.subtract(self._support_vector, other._support_vector)
+        x = np.linalg.solve(A, b)
+        return x[0] if 0 <= x[0] <= 1 and 0 <= x[1] <= 1 else None
 
 
 def intersect(polygon1, polygon2):
     """
-    The given polygons must be convex and their vertices must be in anti-clockwise order (this is not checked!)
+    
+    原理就是求得在对方内部的顶点和边相交得到的点，依次相连得到相交多边形
 
-    Example: polygon1 = [[0,0], [0,1], [1,1]]
+    Example: 
+        polygon1 = [[1,1], [-1,1], [-1, -1], [1,-1]]
+        polygon2 = [[0,0], [0,2], [2, 2], [2, 0]]
 
     """
+    # polygon1 = _sort_vertices_anti_clockwise_and_remove_duplicates(polygon1)
+    # polygon2 = _sort_vertices_anti_clockwise_and_remove_duplicates(polygon2)
     polygon3 = list()
     polygon3.extend(_get_vertices_lying_in_the_other_polygon(polygon1, polygon2))
     polygon3.extend(_get_edge_intersection_points(polygon1, polygon2))
-    return _sort_vertices_anti_clockwise_and_remove_duplicates(polygon3)
+    polygon3 = _sort_vertices_anti_clockwise_and_remove_duplicates(polygon3)
+    return polygon1, polygon2, polygon3
 
 
 def _get_vertices_lying_in_the_other_polygon(polygon1, polygon2):
-    vertices_lying_in_the_other_polygon = list()
+    vertices = list()
     for corner in polygon1:
-        if _polygon_contains_point(polygon2, corner):
-            vertices_lying_in_the_other_polygon.append(corner)
+        if _polygon_contains_point_2(polygon2, corner):
+            vertices.append(corner)
     for corner in polygon2:
-        if _polygon_contains_point(polygon1, corner):
-            vertices_lying_in_the_other_polygon.append(corner)
-    return vertices_lying_in_the_other_polygon
+        if _polygon_contains_point_2(polygon1, corner):
+            vertices.append(corner)
+    return vertices
 
 
 def _get_edge_intersection_points(polygon1, polygon2):
@@ -40,12 +67,48 @@ def _get_edge_intersection_points(polygon1, polygon2):
 
 
 def _polygon_contains_point(polygon, point):
+    # 夹角法：判断目标点与所有边的夹角和是否为360度，为360度则在多边形内部
+    angles_sum = 0
     for i in range(len(polygon)):
-        a = np.subtract(polygon[i], polygon[i-1])
-        b = np.subtract(point, polygon[i-1])
-        if np.cross(a,b) < 0:
-            return False
-    return True
+        angles_sum += _get_angle_from_points(point, polygon[i], polygon[i-1])
+    if np.rint(angles_sum) == 360:
+        return True
+    else:
+        return False
+
+
+def _polygon_contains_point_2(polygon, point):
+    # 引射线法：从目标点出发引一条射线，看这条射线和多边形所有边的交点数目。如果有奇数个交点，则说明在内部，如果有偶数个交点，则说明在外部
+    intersection_points_num = 0
+    x_coords = [p[0] for p in polygon]
+    # y_coords = [p[1] for p in polygon]
+    edge1 = Edge((min(x_coords)-1, point[1]), point)
+    for i in range(len(polygon)):
+        edge2 = Edge(polygon[i-1], polygon[i])
+        intersection_point = edge1.get_intersection_point(edge2)
+        if intersection_point is not None:
+            intersection_points_num += 1
+    if intersection_points_num % 2 == 1:
+        return True
+    else:
+        return False
+
+
+def _get_angle_from_points(point_1, point_2, point_3):
+    """
+    根据三点坐标计算夹角
+    param point_1: 点1坐标
+    param point_2: 点2坐标
+    param point_3: 点3坐标
+    return: 返回任意角的夹角值，这里只是返回点1的夹角
+    """
+    a = math.sqrt((point_2[0]-point_3[0])*(point_2[0]-point_3[0])+(point_2[1]-point_3[1])*(point_2[1]-point_3[1]))
+    b = math.sqrt((point_1[0]-point_3[0])*(point_1[0]-point_3[0])+(point_1[1]-point_3[1])*(point_1[1]-point_3[1]))
+    c = math.sqrt((point_1[0]-point_2[0])*(point_1[0]-point_2[0])+(point_1[1]-point_2[1])*(point_1[1]-point_2[1]))
+    A = math.degrees(math.acos((a*a-b*b-c*c)/(-2*b*c)))
+    # B = math.degrees(math.acos((b*b-a*a-c*c)/(-2*a*c)))
+    # C = math.degrees(math.acos((c*c-a*a-b*b)/(-2*a*b)))
+    return A
 
 
 def _sort_vertices_anti_clockwise_and_remove_duplicates(polygon, tolerance=1e-7):
@@ -63,9 +126,10 @@ def _get_angle_in_radians(p1, p2):
 
 
 def _get_inner_point(polygon):
+    # 多边形外接矩形中心点
     x_coords = [p[0] for p in polygon]
     y_coords = [p[1] for p in polygon]
-    return [(np.max(x_coords)+np.min(x_coords)) / 2.,(np.max(y_coords)+np.min(y_coords)) / 2.]
+    return [(np.max(x_coords)+np.min(x_coords))/2., (np.max(y_coords)+np.min(y_coords))/2.]
 
 
 def plot_polygon(polygon):
@@ -77,13 +141,18 @@ def plot_polygon(polygon):
 
 if __name__ == '__main__':
 
-    polygon1 = _sort_vertices_anti_clockwise_and_remove_duplicates([[np.cos(x), np.sin(x)] for x in np.random.rand(4)*2*np.pi])
-    polygon2 = _sort_vertices_anti_clockwise_and_remove_duplicates([[np.cos(x), np.sin(x)] for x in np.random.rand(4)*2*np.pi])
+    # polygon1 = _sort_vertices_anti_clockwise_and_remove_duplicates([[np.cos(x), np.sin(x)] for x in np.random.rand(4)*2*np.pi])
+    # polygon2 = _sort_vertices_anti_clockwise_and_remove_duplicates([[np.cos(x), np.sin(x)] for x in np.random.rand(4)*2*np.pi])
 
-    polygon3 = intersect(polygon1, polygon2)
+    polygon1 = [[1.25,0], [0.1,1], [0.25, 1.25], [1,1]]
+    polygon2 = [[-1,1.25], [0.5,1], [-1,0], [1, 0.5], [0,2]]
+    # polygon1 = [[1,1], [-1,1], [-1, -1], [1,-1]]
+    # polygon2 = [[0,0], [0,2], [2, 0], [2, 2]]
+    polygon1, polygon2, polygon3 = intersect(polygon1, polygon2)
 
     plot_polygon(polygon1)
     plot_polygon(polygon2)
     if len(polygon3) > 0:
         plot_polygon(polygon3)
     plt.show()
+    print()
