@@ -9,6 +9,7 @@ class Edge:
         self._direction_vector = np.subtract(point_b, point_a)
 
     def get_intersection_point(self, other):
+        # 重合输出也为None
         t = self._get_intersection_parameter(other)
         return None if t is None else self._get_point(t)
 
@@ -17,25 +18,30 @@ class Edge:
 
     def _get_intersection_parameter(self, other):
         A = np.array([-self._direction_vector, other._direction_vector]).T
-        if np.linalg.matrix_rank(A) < 2:
+        if np.linalg.matrix_rank(A) < 2: # 秩小于2，说明行列式等于0，说明不可逆
         	return None
         b = np.subtract(self._support_vector, other._support_vector)
         x = np.linalg.solve(A, b)
         return x[0] if 0 <= x[0] <= 1 and 0 <= x[1] <= 1 else None
 
 
-def intersect(polygon1, polygon2):
+def intersect(polygon1, polygon2, sorted=1):
     """
     
+    若交集为凹多边形会有bug
+
     原理就是求得在对方内部的顶点和边相交得到的点，依次相连得到相交多边形
+
+    若sorted==0，则进行逆时针对点进行排序构造凸多边形
 
     Example: 
         polygon1 = [[1,1], [-1,1], [-1, -1], [1,-1]]
         polygon2 = [[0,0], [0,2], [2, 2], [2, 0]]
 
     """
-    # polygon1 = _sort_vertices_anti_clockwise_and_remove_duplicates(polygon1)
-    # polygon2 = _sort_vertices_anti_clockwise_and_remove_duplicates(polygon2)
+    if not sorted:
+        polygon1 = _sort_vertices_anti_clockwise_and_remove_duplicates(polygon1)
+        polygon2 = _sort_vertices_anti_clockwise_and_remove_duplicates(polygon2)
     polygon3 = list()
     polygon3.extend(_get_vertices_lying_in_the_other_polygon(polygon1, polygon2))
     polygon3.extend(_get_edge_intersection_points(polygon1, polygon2))
@@ -77,21 +83,34 @@ def _polygon_contains_point(polygon, point):
         return False
 
 
-def _polygon_contains_point_2(polygon, point):
+def _polygon_contains_point_2(polygon, point, tolerance=1e-7):
     # 引射线法：从目标点出发引一条射线，看这条射线和多边形所有边的交点数目。如果有奇数个交点，则说明在内部，如果有偶数个交点，则说明在外部
-    intersection_points_num = 0
+    intersection_points = [[] for i in range(4)]
     x_coords = [p[0] for p in polygon]
-    # y_coords = [p[1] for p in polygon]
-    edge1 = Edge((min(x_coords)-1, point[1]), point)
-    for i in range(len(polygon)):
-        edge2 = Edge(polygon[i-1], polygon[i])
-        intersection_point = edge1.get_intersection_point(edge2)
-        if intersection_point is not None:
-            intersection_points_num += 1
-    if intersection_points_num % 2 == 1:
-        return True
-    else:
-        return False
+    y_coords = [p[1] for p in polygon]
+    edge0 = Edge([min(x_coords), point[1]], point)
+    edge1 = Edge([max(x_coords), point[1]], point)
+    edge2 = Edge([point[0], min(y_coords)], point)
+    edge3 = Edge([point[0], max(y_coords)], point)
+    for i in range(len(polygon)):  # 多边形每条边
+        edge = Edge(polygon[i-1], polygon[i])
+        intersection_point = []
+        intersection_point.append(edge0.get_intersection_point(edge))
+        intersection_point.append(edge1.get_intersection_point(edge))
+        intersection_point.append(edge2.get_intersection_point(edge))
+        intersection_point.append(edge3.get_intersection_point(edge))
+        for i in range(len(intersection_point)):  # 四条射线与该边的交点
+            if intersection_point[i] is not None:
+                if len(intersection_points[i]) == 0:
+                    intersection_points[i].append(intersection_point[i])
+                for exist_point in intersection_points[i]:
+                    diff = np.subtract(exist_point, intersection_point[i])
+                    if np.linalg.norm(diff, np.inf) > tolerance:
+                        intersection_points[i].append(intersection_point[i])
+    for point in intersection_points:
+        if len(point) % 2 == 0:
+            return False
+    return True
 
 
 def _get_angle_from_points(point_1, point_2, point_3):
@@ -141,14 +160,14 @@ def plot_polygon(polygon):
 
 if __name__ == '__main__':
 
-    # polygon1 = _sort_vertices_anti_clockwise_and_remove_duplicates([[np.cos(x), np.sin(x)] for x in np.random.rand(4)*2*np.pi])
-    # polygon2 = _sort_vertices_anti_clockwise_and_remove_duplicates([[np.cos(x), np.sin(x)] for x in np.random.rand(4)*2*np.pi])
+    polygon1 = [[np.cos(x), np.sin(x)] for x in np.random.rand(4)*2*np.pi]
+    polygon2 = [[np.cos(x), np.sin(x)] for x in np.random.rand(4)*2*np.pi]
 
-    polygon1 = [[1.25,0], [0.1,1], [0.25, 1.25], [1,1]]
-    polygon2 = [[-1,1.25], [0.5,1], [-1,0], [1, 0.5], [0,2]]
+    # polygon1 = [[1.25,0], [0.1,1], [0.25, 1.25], [1,1]]
+    # polygon2 = [[-1,1.25], [0.5,1], [-1,0], [1, 0.5], [0,2]]
     # polygon1 = [[1,1], [-1,1], [-1, -1], [1,-1]]
-    # polygon2 = [[0,0], [0,2], [2, 0], [2, 2]]
-    polygon1, polygon2, polygon3 = intersect(polygon1, polygon2)
+    # polygon2 = [[0,-1], [0,2], [2, 0], [2, 2]]
+    polygon1, polygon2, polygon3 = intersect(polygon1, polygon2, sorted=0)
 
     plot_polygon(polygon1)
     plot_polygon(polygon2)
